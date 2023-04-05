@@ -16,6 +16,7 @@ from determined.core._searcher import SearcherOperation
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
 from pytorch_lightning.utilities.distributed import rank_zero_only
+import lightning
 
 CHECKPOINT_DOWNLOAD_PATH = "determined_checkpoint_download"
 TEMP_CHECKPOINT_FILE = "determined.ckpt"
@@ -409,7 +410,6 @@ def _configure_deepspeed(kwargs: Dict[str, Any], shared: DeterminedIntegrationSh
 def build_determined_trainer(
     core_context: det.core.Context,
     strategy: Any,
-#    module_cls: Type[pl.LightningModule],
     base_ckpt_io: Optional[pl.plugins.io.CheckpointIO] = None,
     **kwargs: Any,
 #) -> Tuple[pl.Trainer, pl.LightningModule]:
@@ -461,7 +461,7 @@ def build_determined_trainer(
             "num_nodes": core_context.distributed.cross_size,
             "devices": "auto",
             "accelerator": "gpu",
-            "resume_from_checkpoint": None if module_load_only else ckpt_path,
+            #"resume_from_checkpoint": None if module_load_only else ckpt_path,
             "max_epochs": get_searcher_max_length(),
         },
     )
