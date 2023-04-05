@@ -17,6 +17,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
 from pytorch_lightning.utilities.distributed import rank_zero_only
 import lightning
+import torch
 
 CHECKPOINT_DOWNLOAD_PATH = "determined_checkpoint_download"
 TEMP_CHECKPOINT_FILE = "determined.ckpt"
@@ -247,7 +248,7 @@ class DeterminedCallback(pl.callbacks.Callback):  # type: ignore
         outputs = cast(Dict[str, Any], outputs)
         self.shared.global_step = self.initial_global_step + trainer.global_step
         if self.core_context.distributed.rank == 0:
-            outputs = {k: v.item() for k, v in outputs.items()}
+            outputs = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in outputs.items()}
             # We only report training metrics from rank 0 to avoid too many blocking syncs.
             self.core_context.train.report_training_metrics(
                 steps_completed=self.shared.global_step, metrics=outputs
