@@ -217,7 +217,7 @@ class TimingCallback(Callback):
         self._on_batch_end("train_backward_timing", pl_module)
 
 
-def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictConfig, Dict]] = None) -> Optional[Path]:
+def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictConfig, Dict]] = None, mlde_context: 'mlde_core_context' = None) -> Optional[Path]:
     """
     exp_manager is a helper function used to manage folders for experiments. It follows the pytorch lightning paradigm
     of exp_dir/model_or_experiment_name/version. If the lightning trainer has a logger, exp_manager will get exp_dir,
@@ -329,6 +329,13 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         resume_if_exists=cfg.resume_if_exists,
     )
 
+    #MLDE Set Explicitly checkpoint dir path
+    if mlde_context != None:
+        import determined as det
+        info = det.get_cluster_info()
+        mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
+        cfg.checkpoint_callback_params.dirpath = mlde_ckpt_path
+
     if cfg.resume_if_exists:
         # Check for existing checkpoints in `dirpath` if it's specified, use <log_dir>/checkpoints otherwise
         if cfg.checkpoint_callback_params.dirpath:
@@ -367,6 +374,10 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
     app_state.checkpoint_name = checkpoint_name
     app_state.create_checkpoint_callback = cfg.create_checkpoint_callback
     app_state.checkpoint_callback_params = cfg.checkpoint_callback_params
+    app_state.mlde_context = mlde_context
+
+
+    print (f"dbg---, {checkpoint_name}, {cfg.create_checkpoint_callback}, {cfg.checkpoint_callback_params}")
 
     # Create the logging directory if it does not exist
     os.makedirs(log_dir, exist_ok=True)  # Cannot limit creation to global zero as all ranks write to own log file
@@ -505,16 +516,18 @@ def error_checks(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictC
             "Hydra changed the working directory. This interferes with ExpManger's functionality. Please pass "
             "hydra.run.dir=. to your python script."
         )
-    if trainer.logger is not None and (
-        cfg.create_tensorboard_logger or cfg.create_wandb_logger or cfg.create_mlflow_logger
-    ):
-        raise LoggerMisconfigurationError(
-            "The pytorch lightning trainer that was passed to exp_manager contained a logger, and either "
-            f"create_tensorboard_logger: {cfg.create_tensorboard_logger} or create_wandb_logger: "
-            f"{cfg.create_wandb_logger} or create_mlflow_logger: {cfg.create_mlflow_logger}"
-            f"or create_dllogger_logger: {cfg.create_mlflow_logger} was set to True. "
-            "These can only be used if trainer does not already have a logger."
-        )
+
+    # mlde has its own logger
+    # if trainer.logger is not None and (
+    #     cfg.create_tensorboard_logger or cfg.create_wandb_logger or cfg.create_mlflow_logger
+    # ):
+    #     raise LoggerMisconfigurationError(
+    #         "The pytorch lightning trainer that was passed to exp_manager contained a logger, and either "
+    #         f"create_tensorboard_logger: {cfg.create_tensorboard_logger} or create_wandb_logger: "
+    #         f"{cfg.create_wandb_logger} or create_mlflow_logger: {cfg.create_mlflow_logger}"
+    #         f"or create_dllogger_logger: {cfg.create_mlflow_logger} was set to True. "
+    #         "These can only be used if trainer does not already have a logger."
+    #     )
     if trainer.num_nodes > 1 and not check_slurm(trainer):
         logging.error(
             "You are running multi-node training without SLURM handling the processes."
@@ -692,12 +705,13 @@ def get_log_dir(
                     "must be None."
                 )
             _exp_dir = trainer.logger.save_dir
-        if name:
-            raise LoggerMisconfigurationError(
-                "The pytorch lightning trainer that was passed to exp_manager contained a logger, and name: "
-                f"{name} was also passed to exp_manager. If the trainer contains a "
-                "logger, exp_manager will use trainer.logger.name, and name passed to exp_manager must be None."
-            )
+        # MLDE Ignore
+        # if name:
+        #     raise LoggerMisconfigurationError(
+        #         "The pytorch lightning trainer that was passed to exp_manager contained a logger, and name: "
+        #         f"{name} was also passed to exp_manager. If the trainer contains a "
+        #         "logger, exp_manager will use trainer.logger.name, and name passed to exp_manager must be None."
+        #     )
         name = trainer.logger.name
         version = f"version_{trainer.logger.version}"
     # Use user-defined exp_dir, project_name, exp_name, and versioning options
@@ -1092,7 +1106,9 @@ def configure_checkpointing(
         params.filename = f'{name}--{{{params.monitor}:.4f}}-{{epoch}}'
     if params.prefix is None:
         params.prefix = name
-    NeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
+    #NeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
+    from nemo.utils.mlde_integration import MLDENeMoModelCheckpoint
+    MLDENeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
 
     logging.debug(params.dirpath)
     logging.debug(params.filename)
@@ -1117,7 +1133,9 @@ def configure_checkpointing(
                 f"{trainer.check_val_every_n_epoch} epochs to ensure that checkpointing will not error out."
             )
 
-    checkpoint_callback = NeMoModelCheckpoint(n_resume=resume, **params)
+    #checkpoint_callback = NeMoModelCheckpoint(n_resume=resume, **params)
+    checkpoint_callback = MLDENeMoModelCheckpoint(n_resume=resume, **params)
+    
     checkpoint_callback.last_model_path = trainer._checkpoint_connector.resume_from_checkpoint_fit_path or ""
     if 'mp_rank' in checkpoint_callback.last_model_path or 'tp_rank' in checkpoint_callback.last_model_path:
         checkpoint_callback.last_model_path = uninject_model_parallel_rank(checkpoint_callback.last_model_path)

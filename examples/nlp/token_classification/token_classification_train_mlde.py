@@ -24,7 +24,7 @@ from nemo.utils import logging
 from nemo.utils.exp_manager import exp_manager
 
 
-from mlde_integration import build_determined_trainer, determined_core_init, get_hyperparameters
+from nemo.utils.mlde_integration import build_determined_trainer, determined_core_init, get_hyperparameters
 
 """
 This scripts shows how to train a Token Classification model.
@@ -122,7 +122,7 @@ def main(cfg: DictConfig) -> None:
         )
 
         #trainer = pl.Trainer(strategy=strategy, **cfg.trainer)
-        #exp_manager(trainer, cfg.get("exp_manager", None))
+        exp_manager(trainer, cfg.get("exp_manager", None), core_context)
 
         if not cfg.pretrained_model:
             logging.info(f'Config: {OmegaConf.to_yaml(cfg)}')

@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Callable, cast, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, cast, Dict, Iterator, List, Optional, Tuple, Type, Union, Iterable
 
 
 import determined as det
@@ -18,6 +18,10 @@ from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp3
 from pytorch_lightning.utilities.distributed import rank_zero_only
 import lightning
 import torch
+from nemo.utils.exp_manager import NeMoModelCheckpoint
+from nemo.utils.app_state import AppState
+
+import traceback
 
 CHECKPOINT_DOWNLOAD_PATH = "determined_checkpoint_download"
 TEMP_CHECKPOINT_FILE = "determined.ckpt"
@@ -196,6 +200,9 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         shared: DeterminedIntegrationSharedState,
         base_ckpt_io: Optional[pl.plugins.io.CheckpointIO],
     ) -> None:
+
+        print ('dbg----')
+        traceback.print_stack()
         self.shared = shared
         if base_ckpt_io:
             self.base_ckpt_io = base_ckpt_io
@@ -208,6 +215,8 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         path: Union[str, Path],
         storage_options: Optional[Any] = None,
     ) -> None:
+        print('dbg---- save_checkpoint')
+        traceback.print_stack()
         self.base_ckpt_io.save_checkpoint(checkpoint, path, storage_options)
         upload_determined_checkpoint(path, self.shared)
 
@@ -216,9 +225,13 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         path: Union[str, Path],
         map_location: Optional[Callable] = lambda storage, loc: storage,
     ) -> Dict[str, Any]:
+        print('dbg----')
+        traceback.print_stack()
         return cast(Dict[str, Any], self.base_ckpt_io.load_checkpoint(path, map_location))
 
     def remove_checkpoint(self, path: Union[str, Path]) -> None:
+        print('dbg----')
+        traceback.print_stack()
         self.base_ckpt_io.remove_checkpoint(path)
 
 
@@ -332,23 +345,6 @@ class DeterminedCallback(pl.callbacks.Callback):  # type: ignore
                 )
 
 
-class DeterminedDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):  # type: ignore
-    """
-    Inserts a save_checkpoint hook into DeepSpeedStrategy.
-    """
-
-    def __init__(
-        self, shared: DeterminedIntegrationSharedState, *args: List, **kwargs: Dict
-    ) -> None:
-        super().__init__(*args, **kwargs)
-        self.shared = shared
-
-    def save_checkpoint(
-        self, checkpoint: Dict, filepath: Union[str, Path], storage_options: Optional[Any] = None
-    ) -> None:
-        super().save_checkpoint(checkpoint, filepath, storage_options)
-        upload_determined_checkpoint(filepath, self.shared)
-
 
 def get_hyperparameters() -> AttrDict:
     """
@@ -435,7 +431,7 @@ def build_determined_trainer(
         searcher_ops=searcher_ops,
         current_op=next(searcher_ops),
     )
-    _configure_deepspeed(kwargs, shared)
+    # _configure_deepspeed(kwargs, shared)
     # module_load_only = False
     # ckpt_metadata = get_checkpoint_metadata(core_context)
     # if ckpt_metadata and ckpt_metadata["trial_id"] != get_cluster_info_with_assert().trial.trial_id:
@@ -453,7 +449,7 @@ def build_determined_trainer(
         {
             "callbacks": DeterminedCallback(shared),
             "logger": DeterminedLogger(shared),
-            "plugins": DeterminedCheckpointIO(shared, base_ckpt_io),
+            # "plugins": DeterminedCheckpointIO(shared, base_ckpt_io),
         },
     )
     _add_integration_controlled_args(
@@ -468,3 +464,23 @@ def build_determined_trainer(
     )
     #return (pl.Trainer(**kwargs), module)
     return pl.Trainer(strategy=strategy, **kwargs)
+
+
+
+class MLDENeMoModelCheckpoint(NeMoModelCheckpoint):
+
+    def __init__(self, **kwargs):
+        print ('dbg--- init on MLDENeMoModelCheckpoint')
+        print (f'dbg--- init kwargs = {kwargs}')
+        app_state = AppState()
+        super().__init__(**kwargs)
+
+    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
+        print ('dbg--- MLDENeMoModelCheckpoint::on_save_checkpoint')
+        output = super().on_save_checkpoint(trainer, pl_module, checkpoint)
+        return output
+
+    @property
+    def _saved_checkpoint_paths(self) -> Iterable[Path]:
+        print ('dbg--- MLDENeMoModelCheckpoint::_saved_checkpoint_paths')
+        return super()._saved_checkpoint_paths()

@@ -75,6 +75,9 @@ class AppState(metaclass=Singleton):
         self._all_model_restore_paths = []
         self._model_guid_map = {}  # type: Dict[str, ModelMetadataRegistry]
 
+        # MLDE state
+        self._mlde_context = None
+
     @property
     def device_id(self):
         """ Property returns the device_id
@@ -529,3 +532,12 @@ class AppState(metaclass=Singleton):
     @nemo_file_folder.setter
     def nemo_file_folder(self, path: str):
         self._nemo_file_folder = path
+
+
+    @property
+    def mlde_context(self):
+        return self._mlde_context
+
+    @mlde_context.setter
+    def mlde_context(self, mlde_context):
+        self._mlde_context = mlde_context
