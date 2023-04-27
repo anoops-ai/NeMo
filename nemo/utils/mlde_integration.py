@@ -14,7 +14,6 @@ import determined as det
 from determined._info import ClusterInfo
 from determined.core._searcher import SearcherOperation
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
 from pytorch_lightning.utilities.distributed import rank_zero_only
 import lightning
 import torch
@@ -24,7 +23,6 @@ from nemo.collections.common.callbacks import EMA
 
 import traceback
 
-CHECKPOINT_DOWNLOAD_PATH = "determined_checkpoint_download"
 TEMP_CHECKPOINT_FILE = "determined.ckpt"
 
 
@@ -39,30 +37,6 @@ def get_cluster_info_with_assert() -> ClusterInfo:
     info = det.get_cluster_info()
     assert info, "This code can only be run on-cluster."
     return info
-
-
-def download_checkpoint(core_context: det.core.Context, module_load_only: bool) -> Optional[str]:
-    info = det.get_cluster_info()
-    if info:
-        ckpt_id = info.latest_checkpoint
-        if ckpt_id:
-            core_context.checkpoint.download(ckpt_id, CHECKPOINT_DOWNLOAD_PATH)
-    if os.path.isdir(CHECKPOINT_DOWNLOAD_PATH):
-        if "latest" in os.listdir(CHECKPOINT_DOWNLOAD_PATH):
-            if module_load_only:
-                # DeepSpeed checkpoint; convert to a .ckpt file.
-                convert_zero_checkpoint_to_fp32_state_dict(
-                    CHECKPOINT_DOWNLOAD_PATH, TEMP_CHECKPOINT_FILE
-                )
-                return TEMP_CHECKPOINT_FILE
-            else:
-                return CHECKPOINT_DOWNLOAD_PATH
-        else:
-            ckpt_files = glob.glob(os.path.join(CHECKPOINT_DOWNLOAD_PATH, "*.ckpt"))
-            assert len(ckpt_files) == 1, "Checkpoint must contain exactly one .ckpt file."
-            return ckpt_files[0]
-    return None
-
 
 def get_checkpoint_metadata(core_context: det.core.Context) -> Optional[Dict]:
     info = det.get_cluster_info()
@@ -360,12 +334,10 @@ def get_hyperparameters() -> AttrDict:
 
 def determined_core_init() -> det.core.Context:
     """
-    Checks for DeepSpeed and initializes a det.core.Context appropriately.
+    Initializes a det.core.Context appropriately.
     """
-    if "USE_DEEPSPEED" in os.environ:
-        distributed_context = det.core.DistributedContext.from_deepspeed()
-    else:
-        distributed_context = det.core.DistributedContext.from_torch_distributed()
+
+    distributed_context = det.core.DistributedContext.from_torch_distributed()
     return det.core.init(distributed=distributed_context)
 
 
@@ -390,21 +362,6 @@ def _append_integration_controlled_args(kwargs: Dict[str, Any], intargs: Dict[st
             val = [val]
         val.append(intargs[k])
         kwargs[k] = val
-
-
-def _configure_deepspeed(kwargs: Dict[str, Any], shared: DeterminedIntegrationSharedState) -> None:
-    if "USE_DEEPSPEED" in os.environ:
-        hparams = get_hyperparameters()
-        with open(hparams["ds_config"], "r") as f:
-            assert "strategy" not in kwargs or not (
-                kwargs["strategy"]
-            ), "Can't supply alternative strategy when using DeepSpeed."
-            kwargs["strategy"] = DeterminedDeepSpeedStrategy(
-                shared=shared,
-                cluster_environment=DeterminedClusterEnvironment(shared),
-                config=json.load(f),
-                logging_batch_size_per_gpu=hparams["batch_size"],
-            )
 
 
 def build_determined_trainer(
@@ -434,19 +391,7 @@ def build_determined_trainer(
         searcher_ops=searcher_ops,
         current_op=next(searcher_ops),
     )
-    # _configure_deepspeed(kwargs, shared)
-    # module_load_only = False
-    # ckpt_metadata = get_checkpoint_metadata(core_context)
-    # if ckpt_metadata and ckpt_metadata["trial_id"] != get_cluster_info_with_assert().trial.trial_id:
-    #     # New trial, so experiment hyperparameters may have changed.  Instead of fully loading
-    #     # the training checkpoint, we just load the module.
-    #     logging.info("New trial -- only loading module weights and not training state.")
-    #     module_load_only = True
-    # ckpt_path = download_checkpoint(core_context, module_load_only)
-    # if module_load_only:
-    #     module = module_cls.load_from_checkpoint(ckpt_path)
-    # else:
-    #     module = module_cls()
+
     _append_integration_controlled_args(
         kwargs,
         {
@@ -467,83 +412,3 @@ def build_determined_trainer(
     )
     #return (pl.Trainer(**kwargs), module)
     return pl.Trainer(strategy=strategy, **kwargs)
-
-
-
-class MLDENeMoModelCheckpoint(NeMoModelCheckpoint):
-
-    def __init__(self, **kwargs):
-        print ('dbg--- init on MLDENeMoModelCheckpoint')
-        print (f'dbg--- init kwargs = {kwargs}')
-        #traceback.print_stack()
-
-        app_state = AppState()
-        super().__init__(**kwargs)
-    
-    def nemo_topk_check_previous_run(self):
-        print ('dbg--- MLDENeMoModelCheckpoint::nemo_topk_check_previous_run')
-        #traceback.print_stack()
-
-        super().nemo_topk_check_previous_run()
-
-    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
-        print ('dbg--- MLDENeMoModelCheckpoint::on_save_checkpoint')
-        #traceback.print_stack()
-        output = super().on_save_checkpoint(trainer, pl_module, checkpoint)
-        return output
-
-    def on_train_end(self, trainer, pl_module):
-        print ('dbg--- MLDENeMoModelCheckpoint::on_train_end')
-        #traceback.print_stack()
-        super().on_train_end(trainer, pl_module)
-        
-    def _del_model_without_trainer(self, filepath: str) -> None:
-        print ('dbg--- MLDENeMoModelCheckpoint::_del_model_without_trainer')
-        #traceback.print_stack()
-        super()._del_model_without_trainer(filepath)
-
-
-    def _ema_callback(self, trainer: 'pytorch_lightning.Trainer') -> Optional[EMA]:
-        print ('dbg--- MLDENeMoModelCheckpoint::_ema_callback')
-        #traceback.print_stack()
-
-        return super()._ema_callback(trainer)
-
-
-    def _save_checkpoint(self, trainer: 'pytorch_lightning.Trainer', filepath: str) -> None:
-        print ('dbg--- MLDENeMoModelCheckpoint::_save_checkpoint')
-        print ('dbg---- MLDENeMoModelCheckpoint::_save_checkpoint', filepath)
-        #traceback.print_stack()
-
-        super()._save_checkpoint(trainer, filepath)
-
-    def _remove_checkpoint(self, trainer: "pytorch_lightning.Trainer", filepath: str) -> None:
-        print ('dbg--- MLDENeMoModelCheckpoint::_remove_checkpoint')
-        #traceback.print_stack()
-
-        super()._remove_checkpoint(trainer, filepath)
-
-    def _ema_format_filepath(self, filepath: str) -> str:
-        print ('dbg--- MLDENeMoModelCheckpoint::_ema_format_filepath')
-        #traceback.print_stack()
-
-        return super()._ema_format_filepath(filepath)
-
-    def _has_ema_ckpts(self, checkpoints: Iterable[Path]) -> bool:
-        print ('dbg--- MLDENeMoModelCheckpoint::_has_ema_ckpts')
-        #traceback.print_stack()
-
-    
-        return super()._has_ema_ckpts(checkpoints)
-
-    def _is_ema_filepath(self, filepath: Union[Path, str]) -> bool:
-        print ('dbg--- MLDENeMoModelCheckpoint::_is_ema_filepath')
-        #traceback.print_stack()
-
-        return super()._is_ema_filepath(filepath)
-
-    @property
-    def _saved_checkpoint_paths(self) -> Iterable[Path]:
-        print ('dbg--- MLDENeMoModelCheckpoint::_saved_checkpoint_paths')
-        #traceback.print_stack()
-        return super()._saved_checkpoint_paths()
