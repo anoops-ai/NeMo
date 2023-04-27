@@ -20,6 +20,7 @@ import lightning
 import torch
 from nemo.utils.exp_manager import NeMoModelCheckpoint
 from nemo.utils.app_state import AppState
+from nemo.collections.common.callbacks import EMA
 
 import traceback
 
@@ -181,6 +182,7 @@ def upload_determined_checkpoint(
             "trial_id": get_cluster_info_with_assert().trial.trial_id,
         }
         if os.path.isfile(path):
+            print ('dbg----upload_determined_checkpoint path =',path)
             # Create a temporary directory with a symbolic link to the saved file,
             # so we can upload it without making a copy.
             # If path is a directory terminated with /, basename will return empty string --
@@ -188,6 +190,7 @@ def upload_determined_checkpoint(
             ckpt_name = os.path.basename(os.path.normpath(path))
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_ckpt_path = os.path.join(temp_dir, ckpt_name)
+                print ('dbg----upload_determined_checkpoint temp_ckpt_path =',temp_ckpt_path)
                 os.symlink(os.path.abspath(path), os.path.abspath(temp_ckpt_path))
                 shared.core_context.checkpoint.upload(temp_dir, det_checkpoint_metadata)
         else:
@@ -449,7 +452,7 @@ def build_determined_trainer(
         {
             "callbacks": DeterminedCallback(shared),
             "logger": DeterminedLogger(shared),
-            # "plugins": DeterminedCheckpointIO(shared, base_ckpt_io),
+             "plugins": DeterminedCheckpointIO(shared, base_ckpt_io),
         },
     )
     _add_integration_controlled_args(
@@ -472,15 +475,75 @@ class MLDENeMoModelCheckpoint(NeMoModelCheckpoint):
     def __init__(self, **kwargs):
         print ('dbg--- init on MLDENeMoModelCheckpoint')
         print (f'dbg--- init kwargs = {kwargs}')
+        #traceback.print_stack()
+
         app_state = AppState()
         super().__init__(**kwargs)
+    
+    def nemo_topk_check_previous_run(self):
+        print ('dbg--- MLDENeMoModelCheckpoint::nemo_topk_check_previous_run')
+        #traceback.print_stack()
+
+        super().nemo_topk_check_previous_run()
 
     def on_save_checkpoint(self, trainer, pl_module, checkpoint):
         print ('dbg--- MLDENeMoModelCheckpoint::on_save_checkpoint')
+        #traceback.print_stack()
         output = super().on_save_checkpoint(trainer, pl_module, checkpoint)
         return output
+
+    def on_train_end(self, trainer, pl_module):
+        print ('dbg--- MLDENeMoModelCheckpoint::on_train_end')
+        #traceback.print_stack()
+        super().on_train_end(trainer, pl_module)
+        
+    def _del_model_without_trainer(self, filepath: str) -> None:
+        print ('dbg--- MLDENeMoModelCheckpoint::_del_model_without_trainer')
+        #traceback.print_stack()
+        super()._del_model_without_trainer(filepath)
+
+
+    def _ema_callback(self, trainer: 'pytorch_lightning.Trainer') -> Optional[EMA]:
+        print ('dbg--- MLDENeMoModelCheckpoint::_ema_callback')
+        #traceback.print_stack()
+
+        return super()._ema_callback(trainer)
+
+
+    def _save_checkpoint(self, trainer: 'pytorch_lightning.Trainer', filepath: str) -> None:
+        print ('dbg--- MLDENeMoModelCheckpoint::_save_checkpoint')
+        print ('dbg---- MLDENeMoModelCheckpoint::_save_checkpoint', filepath)
+        #traceback.print_stack()
+
+        super()._save_checkpoint(trainer, filepath)
+
+    def _remove_checkpoint(self, trainer: "pytorch_lightning.Trainer", filepath: str) -> None:
+        print ('dbg--- MLDENeMoModelCheckpoint::_remove_checkpoint')
+        #traceback.print_stack()
+
+        super()._remove_checkpoint(trainer, filepath)
+
+    def _ema_format_filepath(self, filepath: str) -> str:
+        print ('dbg--- MLDENeMoModelCheckpoint::_ema_format_filepath')
+        #traceback.print_stack()
+
+        return super()._ema_format_filepath(filepath)
+
+    def _has_ema_ckpts(self, checkpoints: Iterable[Path]) -> bool:
+        print ('dbg--- MLDENeMoModelCheckpoint::_has_ema_ckpts')
+        #traceback.print_stack()
+
+    
+        return super()._has_ema_ckpts(checkpoints)
+
+    def _is_ema_filepath(self, filepath: Union[Path, str]) -> bool:
+        print ('dbg--- MLDENeMoModelCheckpoint::_is_ema_filepath')
+        #traceback.print_stack()
+
+        return super()._is_ema_filepath(filepath)
 
     @property
     def _saved_checkpoint_paths(self) -> Iterable[Path]:
         print ('dbg--- MLDENeMoModelCheckpoint::_saved_checkpoint_paths')
+        #traceback.print_stack()
         return super()._saved_checkpoint_paths()

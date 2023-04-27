@@ -1106,9 +1106,9 @@ def configure_checkpointing(
         params.filename = f'{name}--{{{params.monitor}:.4f}}-{{epoch}}'
     if params.prefix is None:
         params.prefix = name
-    #NeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
-    from nemo.utils.mlde_integration import MLDENeMoModelCheckpoint
-    MLDENeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
+    NeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
+    #from nemo.utils.mlde_integration import MLDENeMoModelCheckpoint
+    #MLDENeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
 
     logging.debug(params.dirpath)
     logging.debug(params.filename)
@@ -1133,8 +1133,8 @@ def configure_checkpointing(
                 f"{trainer.check_val_every_n_epoch} epochs to ensure that checkpointing will not error out."
             )
 
-    #checkpoint_callback = NeMoModelCheckpoint(n_resume=resume, **params)
-    checkpoint_callback = MLDENeMoModelCheckpoint(n_resume=resume, **params)
+    checkpoint_callback = NeMoModelCheckpoint(n_resume=resume, **params)
+    #checkpoint_callback = MLDENeMoModelCheckpoint(n_resume=resume, **params)
     
     checkpoint_callback.last_model_path = trainer._checkpoint_connector.resume_from_checkpoint_fit_path or ""
     if 'mp_rank' in checkpoint_callback.last_model_path or 'tp_rank' in checkpoint_callback.last_model_path:
