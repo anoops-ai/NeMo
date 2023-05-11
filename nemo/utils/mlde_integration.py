@@ -21,10 +21,12 @@ from nemo.utils.exp_manager import NeMoModelCheckpoint
 from nemo.utils.app_state import AppState
 from nemo.collections.common.callbacks import EMA
 
+
+import shutil
+from omegaconf import DictConfig, OmegaConf, open_dict
+
+
 import traceback
-
-TEMP_CHECKPOINT_FILE = "determined.ckpt"
-
 
 def flatten(xs: List[List]) -> List:
     return [item for items in xs for item in items]
@@ -155,20 +157,30 @@ def upload_determined_checkpoint(
             "steps_completed": shared.global_step,
             "trial_id": get_cluster_info_with_assert().trial.trial_id,
         }
-        if os.path.isfile(path):
-            print ('dbg----upload_determined_checkpoint path =',path)
-            # Create a temporary directory with a symbolic link to the saved file,
-            # so we can upload it without making a copy.
-            # If path is a directory terminated with /, basename will return empty string --
-            # we use normpath to ensure it returns the last directory.
-            ckpt_name = os.path.basename(os.path.normpath(path))
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_ckpt_path = os.path.join(temp_dir, ckpt_name)
-                print ('dbg----upload_determined_checkpoint temp_ckpt_path =',temp_ckpt_path)
-                os.symlink(os.path.abspath(path), os.path.abspath(temp_ckpt_path))
-                shared.core_context.checkpoint.upload(temp_dir, det_checkpoint_metadata)
-        else:
-            shared.core_context.checkpoint.upload(path, det_checkpoint_metadata)
+
+        print('dbg------ save called by whom')
+        traceback.print_stack()
+        info = det.get_cluster_info()
+        mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
+        with shared.core_context.checkpoint.store_path(det_checkpoint_metadata) as (_, dest_uuid):
+                ckpt_name = os.path.basename(os.path.normpath(path))
+                dst_ckpt_path = os.path.join(mlde_ckpt_path,dest_uuid,ckpt_name)
+                print (f'ckpt_name = {ckpt_name}, src_path = {path}, dst = {dst_ckpt_path}')
+                os.rename(path, dst_ckpt_path)
+        # if os.path.isfile(path):
+        #     print ('dbg----upload_determined_checkpoint path =',path)
+        #     # Create a temporary directory with a symbolic link to the saved file,
+        #     # so we can upload it without making a copy.
+        #     # If path is a directory terminated with /, basename will return empty string --
+        #     # we use normpath to ensure it returns the last directory.
+        #     ckpt_name = os.path.basename(os.path.normpath(path))
+        #     with tempfile.TemporaryDirectory() as temp_dir:
+        #         temp_ckpt_path = os.path.join(temp_dir, ckpt_name)
+        #         print ('dbg----upload_determined_checkpoint temp_ckpt_path =',temp_ckpt_path)
+        #         os.symlink(os.path.abspath(path), os.path.abspath(temp_ckpt_path))
+        #         shared.core_context.checkpoint.upload(temp_dir, det_checkpoint_metadata)
+        # else:
+        #     shared.core_context.checkpoint.upload(path, det_checkpoint_metadata)
 
 
 class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
@@ -178,8 +190,6 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         base_ckpt_io: Optional[pl.plugins.io.CheckpointIO],
     ) -> None:
 
-        print ('dbg----')
-        traceback.print_stack()
         self.shared = shared
         if base_ckpt_io:
             self.base_ckpt_io = base_ckpt_io
@@ -193,7 +203,6 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         storage_options: Optional[Any] = None,
     ) -> None:
         print('dbg---- save_checkpoint')
-        traceback.print_stack()
         self.base_ckpt_io.save_checkpoint(checkpoint, path, storage_options)
         upload_determined_checkpoint(path, self.shared)
 
@@ -202,12 +211,12 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         path: Union[str, Path],
         map_location: Optional[Callable] = lambda storage, loc: storage,
     ) -> Dict[str, Any]:
-        print('dbg----')
+        print('dbg---- load_checkpoint', path)
         traceback.print_stack()
         return cast(Dict[str, Any], self.base_ckpt_io.load_checkpoint(path, map_location))
 
     def remove_checkpoint(self, path: Union[str, Path]) -> None:
-        print('dbg----')
+        print('dbg---- remove_checkpoint', path)
         traceback.print_stack()
         self.base_ckpt_io.remove_checkpoint(path)
 
@@ -290,8 +299,8 @@ class DeterminedCallback(pl.callbacks.Callback):  # type: ignore
                 logging.info("Reached end of searcher operations.")
                 trainer.should_stop = True
         if self.core_context.preempt.should_preempt():
-            trainer.save_checkpoint(TEMP_CHECKPOINT_FILE)
-            raise Exception("Training pre-empted.")
+            print ('dbg---- prempt_should_prempt() got notified, exiting')
+            exit(0)
 
     def on_test_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self.test_epoch_outputs = []
@@ -367,6 +376,7 @@ def _append_integration_controlled_args(kwargs: Dict[str, Any], intargs: Dict[st
 def build_determined_trainer(
     core_context: det.core.Context,
     strategy: Any,
+    cfg_exp_manager: Any,
     base_ckpt_io: Optional[pl.plugins.io.CheckpointIO] = None,
     **kwargs: Any,
 #) -> Tuple[pl.Trainer, pl.LightningModule]:
@@ -384,7 +394,8 @@ def build_determined_trainer(
     - accelerator
     - resume_from_checkpoint
     - max_epochs
-    """
+    """    
+
     searcher_ops = core_context.searcher.operations()
     shared = DeterminedIntegrationSharedState(
         core_context=core_context,
@@ -410,5 +421,56 @@ def build_determined_trainer(
             "max_epochs": get_searcher_max_length(),
         },
     )
-    #return (pl.Trainer(**kwargs), module)
+
+
+    info = det.get_cluster_info()
+    assert info is not None, "this example only runs on-cluster"
+
+
+    # MLDE checkpointing hack
+    base_ckpt_dir = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
+    mlde_ckpt_dirs = Path(base_ckpt_dir)
+    nemo_ckpt_dir = os.path.join(base_ckpt_dir, 'scratch')
+
+
+    # Hack as Nemo needs a exp_dir from which log_dir is derived that needs 
+    cfg_exp_manager.exp_dir = os.path.join(base_ckpt_dir, 'scratch', 'exp_log', str(info.trial.trial_id))
+    print ('dbg--- setting cfg exp_dir = ', cfg_exp_manager.exp_dir)
+
+    # Hack set exp_dir which is required in resumption
+    latest_checkpoint = info.latest_checkpoint
+    print (f'dbg--- latest_checkpoint = {latest_checkpoint}')
+    if latest_checkpoint != None:
+        OmegaConf.set_struct(cfg_exp_manager, True)
+        with open_dict(cfg_exp_manager):
+            cfg_exp_manager.resume_if_exists = True
+        print (f'dbg--- setting resume as we found a checkpoint')
+
+    
+
+
+
+    # # clean up all the symlinks saved before starting/resuming training
+    # if os.path.exists(nemo_ckpt_dir):
+    #     shutil.rmtree(nemo_ckpt_dir)
+    # os.makedirs(nemo_ckpt_dir, exist_ok=True)
+
+    # tmp to get the last checkpoint
+    last_checkpoints = list(mlde_ckpt_dirs.rglob("*last.ckpt"))
+
+    if len(last_checkpoints) > 0:
+
+        print('dbg---- checkpoints = ', last_checkpoints)
+        print ('dbg--- latest ckpt = ', last_checkpoints[0])
+
+        # MLDE need to do this currently due to mlde ckpting logic
+        ckpt_name = os.path.basename(os.path.normpath(last_checkpoints[0]))
+
+        dst_ckpt = os.path.join(nemo_ckpt_dir, ckpt_name)
+
+        os.symlink(last_checkpoints[0], dst_ckpt)
+
+        print(f"dbg--- Symbolic link created successfully for src = {last_checkpoints[0]} to dst = {dst_ckpt}")
+
+
     return pl.Trainer(strategy=strategy, **kwargs)

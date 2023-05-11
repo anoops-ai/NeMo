@@ -110,15 +110,18 @@ def main(cfg: DictConfig) -> None:
         except (ImportError, ModuleNotFoundError):
             strategy = None
 
+        print ('dbg---, main-CFG= ',cfg)
+
         trainer = build_determined_trainer(
             core_context,
             strategy,
-            logger=pl.loggers.CSVLogger(save_dir="logs/"),
+            cfg.exp_manager,
+            #logger=pl.loggers.CSVLogger(save_dir="logs/"),
             callbacks=[
                 pl.callbacks.LearningRateMonitor(logging_interval="step"),
                 pl.callbacks.progress.TQDMProgressBar(refresh_rate=10),
             ],
-            **cfg.trainer
+            **cfg.trainer,
         )
 
         #trainer = pl.Trainer(strategy=strategy, **cfg.trainer)

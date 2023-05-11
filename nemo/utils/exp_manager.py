@@ -308,6 +308,8 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         logging.info("Trainer was called with fast_dev_run. exp_manager will return without any functionality.")
         return
 
+    print ('dbg----, CFG=', cfg)
+
     # Ensure passed cfg is compliant with ExpManagerConfig
     schema = OmegaConf.structured(ExpManagerConfig)
     if isinstance(cfg, dict):
@@ -333,7 +335,7 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
     if mlde_context != None:
         import determined as det
         info = det.get_cluster_info()
-        mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
+        mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'], "scratch")
         cfg.checkpoint_callback_params.dirpath = mlde_ckpt_path
 
     if cfg.resume_if_exists:
