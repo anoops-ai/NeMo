@@ -26,8 +26,6 @@ import shutil
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 
-import traceback
-
 def flatten(xs: List[List]) -> List:
     return [item for items in xs for item in items]
 
@@ -158,8 +156,8 @@ def upload_determined_checkpoint(
             "trial_id": get_cluster_info_with_assert().trial.trial_id,
         }
 
-        print('dbg------ save called by whom')
-        traceback.print_stack()
+        # TBR
+        # move to singleton
         info = det.get_cluster_info()
         mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
         with shared.core_context.checkpoint.store_path(det_checkpoint_metadata) as (_, dest_uuid):
@@ -212,12 +210,10 @@ class DeterminedCheckpointIO(pl.plugins.io.CheckpointIO):  # type: ignore
         map_location: Optional[Callable] = lambda storage, loc: storage,
     ) -> Dict[str, Any]:
         print('dbg---- load_checkpoint', path)
-        traceback.print_stack()
         return cast(Dict[str, Any], self.base_ckpt_io.load_checkpoint(path, map_location))
 
     def remove_checkpoint(self, path: Union[str, Path]) -> None:
         print('dbg---- remove_checkpoint', path)
-        traceback.print_stack()
         self.base_ckpt_io.remove_checkpoint(path)
 
 
@@ -427,14 +423,18 @@ def build_determined_trainer(
     assert info is not None, "this example only runs on-cluster"
 
 
-    # MLDE checkpointing hack
+    # TBR
+    # MLDE checkpointing hack - using it as file share for phase 1 integration
     base_ckpt_dir = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'])
+    exp_dir = os.path.join(base_ckpt_dir, 'exp_'+str(info.trial.trial_id))
     mlde_ckpt_dirs = Path(base_ckpt_dir)
-    nemo_ckpt_dir = os.path.join(base_ckpt_dir, 'scratch')
+
+    # TBR get it from bootstrap? it is hard coded inside of exp_manager or add a fn to expose it
+    nemo_ckpt_dir = os.path.join(exp_dir, 'nemo_workdir', 'None', 'version_None', 'checkpoints')
 
 
     # Hack as Nemo needs a exp_dir from which log_dir is derived that needs 
-    cfg_exp_manager.exp_dir = os.path.join(base_ckpt_dir, 'scratch', 'exp_log', str(info.trial.trial_id))
+    cfg_exp_manager.exp_dir = os.path.join(exp_dir, 'nemo_workdir')
     print ('dbg--- setting cfg exp_dir = ', cfg_exp_manager.exp_dir)
 
     # Hack set exp_dir which is required in resumption

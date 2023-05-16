@@ -331,12 +331,15 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         resume_if_exists=cfg.resume_if_exists,
     )
 
+    print(f'dbg---get_log_dir, log_dir = {log_dir}, exp_dir={exp_dir}, name={name}, version={version}')
+
     #MLDE Set Explicitly checkpoint dir path
-    if mlde_context != None:
-        import determined as det
-        info = det.get_cluster_info()
-        mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'], "scratch")
-        cfg.checkpoint_callback_params.dirpath = mlde_ckpt_path
+    #TBR - remove it
+    # if mlde_context != None:
+    #     import determined as det
+    #     info = det.get_cluster_info()
+    #     mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'], "scratch")
+    #     cfg.checkpoint_callback_params.dirpath = mlde_ckpt_path
 
     if cfg.resume_if_exists:
         # Check for existing checkpoints in `dirpath` if it's specified, use <log_dir>/checkpoints otherwise
@@ -1112,6 +1115,10 @@ def configure_checkpointing(
     logging.debug(params.dirpath)
     logging.debug(params.filename)
     logging.debug(params.prefix)
+
+
+
+    print ('dbg--- all folders')
 
     if "val" in params.monitor:
         if (
