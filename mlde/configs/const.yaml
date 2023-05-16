@@ -1,0 +1,20 @@
+name: ckpt_base_model_hls_mlde
+debug: true
+entrypoint: python -m determined.launch.torch_distributed python  /home/ubuntu/NeMo/examples/nlp/token_classification/token_classification_train_mlde.py model.dataset.data_dir=/home/ubuntu/data/hls model.language_model.pretrained_model_name=biomegatron345m_biovocab_30k_cased +model.tokenizer.library=megatron model.train_ds.batch_size=8 model.validation_ds.batch_size=8 +exp_manager.checkpoint_callback_params.save_top_k=-1 +exp_manager.checkpoint_callback_params.always_save_nemo=False
+ +exp_manager.checkpoint_callback_params.save_nemo_on_train_end=False
+environment:
+  environment_variables:
+  image:
+    cuda: anoophpe/mlde-int:latest
+resources:
+  slots_per_trial: 1
+searcher:
+  name: single
+  metric: val_loss
+  max_length: 10 # max epochs
+
+max_restarts: 0
+
+bind_mounts:
+  - container_path: /home/ubuntu
+    host_path: /home/ubuntu
