@@ -121,7 +121,7 @@ def main(cfg: DictConfig) -> None:
             **cfg.trainer,
         )
 
-        exp_manager(trainer, cfg.get("exp_manager", None), core_context)
+        exp_manager(trainer, cfg.get("exp_manager", None))
 
         if not cfg.pretrained_model:
             logging.info(f'Config: {OmegaConf.to_yaml(cfg)}')

@@ -217,7 +217,7 @@ class TimingCallback(Callback):
         self._on_batch_end("train_backward_timing", pl_module)
 
 
-def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictConfig, Dict]] = None, mlde_context: 'mlde_core_context' = None) -> Optional[Path]:
+def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictConfig, Dict]] = None) -> Optional[Path]:
     """
     exp_manager is a helper function used to manage folders for experiments. It follows the pytorch lightning paradigm
     of exp_dir/model_or_experiment_name/version. If the lightning trainer has a logger, exp_manager will get exp_dir,
@@ -308,8 +308,6 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         logging.info("Trainer was called with fast_dev_run. exp_manager will return without any functionality.")
         return
 
-    print ('dbg----, CFG=', cfg)
-
     # Ensure passed cfg is compliant with ExpManagerConfig
     schema = OmegaConf.structured(ExpManagerConfig)
     if isinstance(cfg, dict):
@@ -330,14 +328,6 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         use_datetime_version=cfg.use_datetime_version,
         resume_if_exists=cfg.resume_if_exists,
     )
-
-    #MLDE Set Explicitly checkpoint dir path
-    #TBR - remove it
-    # if mlde_context != None:
-    #     import determined as det
-    #     info = det.get_cluster_info()
-    #     mlde_ckpt_path = os.path.join(info.trial._config['checkpoint_storage']['host_path'], info.trial._config['checkpoint_storage']['storage_path'], "scratch")
-    #     cfg.checkpoint_callback_params.dirpath = mlde_ckpt_path
 
     if cfg.resume_if_exists:
         # Check for existing checkpoints in `dirpath` if it's specified, use <log_dir>/checkpoints otherwise
