@@ -331,8 +331,6 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
         resume_if_exists=cfg.resume_if_exists,
     )
 
-    print(f'dbg---get_log_dir, log_dir = {log_dir}, exp_dir={exp_dir}, name={name}, version={version}')
-
     #MLDE Set Explicitly checkpoint dir path
     #TBR - remove it
     # if mlde_context != None:
@@ -380,8 +378,6 @@ def exp_manager(trainer: 'pytorch_lightning.Trainer', cfg: Optional[Union[DictCo
     app_state.create_checkpoint_callback = cfg.create_checkpoint_callback
     app_state.checkpoint_callback_params = cfg.checkpoint_callback_params
 
-
-    print (f"dbg---, {checkpoint_name}, {cfg.create_checkpoint_callback}, {cfg.checkpoint_callback_params}")
 
     # Create the logging directory if it does not exist
     os.makedirs(log_dir, exist_ok=True)  # Cannot limit creation to global zero as all ranks write to own log file
@@ -1117,8 +1113,6 @@ def configure_checkpointing(
     logging.debug(params.prefix)
 
 
-
-    print ('dbg--- all folders')
 
     if "val" in params.monitor:
         if (
